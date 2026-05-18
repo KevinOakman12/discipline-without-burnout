@@ -1,0 +1,9 @@
+.env
+_local-*.pem
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+dist/
+.vscode/
+.idea/
