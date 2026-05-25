@@ -1,5 +1,5 @@
-// Экран просмотра/редактирования конкретного (прошедшего или сегодняшнего) дня.
-// Любой день остаётся открытым для редактирования всегда — это критическая фича.
+// Экран просмотра/редактирования конкретного дня.
+// Любой день остаётся открытым для редактирования всегда.
 
 import { html, useState } from '../h.js';
 import { ScreenHeader } from '../components/ui/ScreenHeader.js';
@@ -17,33 +17,65 @@ const Q_LABELS = [
 
 export function DayDetailScreen({ state, date, onBack, onToggleHabit, onUpdate }) {
   const day = state.days[date] || {
-    date, completedHabits: [], reflectionAnswers: ['', '', ''],
-    emotion: null, emotionNote: '', closed: false, breathingCompleted: false,
+    date,
+    completedHabits: [],
+    reflectionAnswers: ['', '', ''],
+    emotions: [],
+    emotionNote: '',
+    closed: false,
+    breathingCompleted: false,
   };
+
+  // Обратная совместимость: старое поле emotion (одиночное) → emotions (массив)
+  const storedEmotions = day.emotions?.length
+    ? day.emotions
+    : (day.emotion ? [day.emotion] : []);
+
   const habits = state.habits;
   const completed = new Set(day.completedHabits);
+
   const [editingEmotion, setEditingEmotion] = useState(false);
-  const [draftEmotion, setDraftEmotion] = useState(day.emotion);
-  const [draftNote, setDraftNote] = useState(day.emotionNote);
+  const [draftIds, setDraftIds] = useState(() => new Set(storedEmotions.map(e => e.id)));
+  const [draftNote, setDraftNote] = useState(day.emotionNote || '');
 
   const saveAnswer = (i, val) => {
-    const next = [...day.reflectionAnswers];
+    const next = [...(day.reflectionAnswers || ['', '', ''])];
     next[i] = val;
     onUpdate({ reflectionAnswers: next });
   };
 
+  const toggleDraft = (e) => {
+    haptic('select');
+    setDraftIds(prev => {
+      const next = new Set(prev);
+      if (next.has(e.id)) next.delete(e.id);
+      else next.add(e.id);
+      return next;
+    });
+  };
+
   const saveEmotion = () => {
-    onUpdate({ emotion: draftEmotion, emotionNote: draftNote, closed: true });
+    const emotions = EMOTION_GROUPS.flatMap(g =>
+      g.items
+        .filter(e => draftIds.has(e.id))
+        .map(e => ({ id: e.id, label: e.label, group: g.key }))
+    );
+    onUpdate({ emotions, emotionNote: draftNote, closed: true });
     setEditingEmotion(false);
   };
 
-  const clearEmotion = () => {
-    setDraftEmotion(null);
+  const clearEmotions = () => {
+    setDraftIds(new Set());
     setDraftNote('');
-    onUpdate({ emotion: null, emotionNote: '' });
+    onUpdate({ emotions: [], emotionNote: '' });
   };
 
-  const em = day.emotion ? findEmotion(day.emotion.id) : null;
+  const openEdit = () => {
+    haptic('light');
+    setDraftIds(new Set(storedEmotions.map(e => e.id)));
+    setDraftNote(day.emotionNote || '');
+    setEditingEmotion(true);
+  };
 
   return html`
     <div class="fade-in">
@@ -51,6 +83,8 @@ export function DayDetailScreen({ state, date, onBack, onToggleHabit, onUpdate }
 
       <div class="app__scroll" style="padding-top:0">
         <div class="stack-6">
+
+          <!-- Привычки -->
           <div class="stack-3">
             <div class="section-title">Привычки</div>
             ${habits.length === 0 && html`
@@ -71,6 +105,7 @@ export function DayDetailScreen({ state, date, onBack, onToggleHabit, onUpdate }
             `)}
           </div>
 
+          <!-- Рефлексия -->
           <div class="stack-3">
             <div class="section-title">Рефлексия</div>
             ${Q_LABELS.map((label, i) => html`
@@ -80,40 +115,53 @@ export function DayDetailScreen({ state, date, onBack, onToggleHabit, onUpdate }
                   class="textarea"
                   style="background:transparent;border:none;padding:0;min-height:60px"
                   placeholder="Можно оставить пустым"
-                  value=${day.reflectionAnswers[i] || ''}
+                  value=${(day.reflectionAnswers || [])[i] || ''}
                   onInput=${(e) => saveAnswer(i, e.target.value)}
                 ></textarea>
               </div>
             `)}
           </div>
 
+          <!-- Эмоции -->
           <div class="stack-3">
-            <div class="section-title">Эмоция</div>
-            ${em
+            <div class="section-title">Эмоции</div>
+            ${storedEmotions.length > 0
               ? html`
                 <div class="card card--flat" style="background:var(--bg-elevated);border:1px solid var(--border)">
-                  <div class="row row-gap-3">
-                    <div style="font-size:28px">${em.emoji}</div>
-                    <div style="flex:1">
-                      <div style="font-weight:600">${em.label}</div>
-                      ${day.emotionNote && html`<div class="text-muted text-sm" style="margin-top:4px">${day.emotionNote}</div>`}
+                  <div class="stack-3">
+                    <div style="display:flex;flex-wrap:wrap;gap:var(--sp-2)">
+                      ${storedEmotions.map(em => {
+                        const info = findEmotion(em.id);
+                        return info ? html`
+                          <span key=${em.id} class="chip">
+                            <span>${info.emoji}</span>${info.label}
+                          </span>
+                        ` : null;
+                      })}
                     </div>
-                    <button class="chip" onClick=${() => { haptic('light'); setEditingEmotion(true); setDraftEmotion(day.emotion); setDraftNote(day.emotionNote); }}>Изменить</button>
+                    ${day.emotionNote && html`
+                      <div class="text-muted text-sm">${day.emotionNote}</div>
+                    `}
+                    <button class="btn btn--soft btn--sm" onClick=${openEdit}>Изменить</button>
                   </div>
                 </div>
               `
               : html`
-                <${Button} variant="soft" full onClick=${() => { setEditingEmotion(true); setDraftEmotion(null); setDraftNote(''); }}>
+                <${Button} variant="soft" full onClick=${openEdit}>
                   Отметить эмоцию
                 </>
               `}
           </div>
+
         </div>
       </div>
 
+      <!-- Модальное редактирование эмоций -->
       <${Modal} open=${editingEmotion} onClose=${() => setEditingEmotion(false)}>
         <div class="stack-5">
-          <div class="h2">Эмоция</div>
+          <div class="h2">Эмоции</div>
+          <div class="text-muted text-sm">Можно выбрать несколько</div>
+
           ${EMOTION_GROUPS.map(g => html`
             <div class="emotion-group" key=${g.key}>
               <div class="emotion-group__label">${g.label}</div>
@@ -121,8 +169,8 @@ export function DayDetailScreen({ state, date, onBack, onToggleHabit, onUpdate }
                 ${g.items.map(e => html`
                   <button
                     key=${e.id}
-                    class=${`emotion-chip emotion-chip--${g.key} ${draftEmotion?.id === e.id ? 'emotion-chip--active' : ''}`}
-                    onClick=${() => { haptic('select'); setDraftEmotion({ id: e.id, label: e.label, group: g.key }); }}
+                    class=${`emotion-chip emotion-chip--${g.key} ${draftIds.has(e.id) ? 'emotion-chip--active' : ''}`}
+                    onClick=${() => toggleDraft(e)}
                   ><span style="margin-right:6px">${e.emoji}</span>${e.label}</button>
                 `)}
               </div>
@@ -138,10 +186,13 @@ export function DayDetailScreen({ state, date, onBack, onToggleHabit, onUpdate }
 
           <div class="btn-row">
             <${Button} variant="ghost" onClick=${() => setEditingEmotion(false)}>Отмена</>
-            <${Button} variant="primary" onClick=${saveEmotion} disabled=${!draftEmotion}>Сохранить</>
+            <${Button} variant="primary" onClick=${saveEmotion} disabled=${draftIds.size === 0}>Сохранить</>
           </div>
-          ${day.emotion && html`
-            <button class="btn btn--ghost text-muted" onClick=${clearEmotion}>Удалить эмоцию</button>
+
+          ${storedEmotions.length > 0 && html`
+            <button class="btn btn--ghost text-muted" style="width:100%" onClick=${clearEmotions}>
+              Удалить эмоции
+            </button>
           `}
         </div>
       </>

@@ -1,118 +1,116 @@
-// Smart Streak — поддерживающая логика серий привычек.
+// Smart Streak — чистая вычислительная логика.
+//
+// ВАЖНО: currentStreak НИКОГДА не хранится в storage.
+// Он всегда вычисляется свежо из completedDates.
+// bestStreak хранится в habit.bestStreak и обновляется только при увеличении.
 //
 // Правила:
-//   1. Бесплатная защита: 1 раз в неделю можно пропустить день без потери серии.
-//      Хранится в user.weeklyProtection (weekKey + used).
-//   2. Защита выходных: пропуск в субботу/воскресенье не сбрасывает серию.
-//   3. Мягкая потеря: если защита уже использована и пропущен будний день — серия сбрасывается.
-//      Сообщение пользователю при этом — поддерживающее.
-//
-// Эти правила применяются при каждом обновлении состояния (через recomputeStreaks),
-// чтобы серии оставались согласованными, даже если пользователь редактирует прошлые дни.
+//   1. Защита выходных: Сб/Вс не сбрасывают серию.
+//   2. Бесплатная защита: 1 будний пропуск в неделю сохраняет серию.
+//      Тратится ТОЛЬКО когда current > 0 (есть что защищать).
+//   3. Мягкая потеря: после использования защиты — серия сбрасывается.
 
-import { addDays, dayDiff, fromKey, isoWeekKey, isWeekend, todayKey, toKey } from './date.js';
+import { addDays, fromKey, isoWeekKey, isWeekend, todayKey, toKey } from './date.js';
 
-// Вычисляет состояние одной привычки на основе её completedDates и текущего user.weeklyProtection.
-// Возвращает { currentStreak, bestStreak, lastEvent } — где lastEvent описывает последнее изменение
-// (использование защиты или потеря серии) для показа поддерживающего сообщения.
+/**
+ * Вычисляет текущую серию и события для одной привычки.
+ * @returns {{ currentStreak: number, events: Array }}
+ */
 export function computeHabitStreak(habit, today = todayKey()) {
-  const completed = new Set(habit.completedDates || []);
-  const startKey = habit.createdAt ? toKey(fromKey(habit.createdAt)) : Object.keys(completed)[0] || today;
+  const completedDates = habit.completedDates || [];
+  const completed = new Set(completedDates);
+
+  // Начало = самая ранняя из дат: createdAt и любая отметка.
+  const allDates = [habit.createdAt, ...completedDates].filter(Boolean).sort();
+  const startKey  = allDates[0] || today;
   const startDate = fromKey(startKey);
-  const endDate = fromKey(today);
+  const endDate   = fromKey(today);
+
   if (endDate < startDate) {
-    return { currentStreak: 0, bestStreak: habit.bestStreak || 0, events: [], usedProtection: false };
+    return { currentStreak: 0, events: [] };
   }
 
   let current = 0;
-  let best = 0;
-  let usedProtectionInWeek = {}; // weekKey -> bool
+  const usedProtectionInWeek = {}; // weekKey → bool
   const events = [];
 
   for (let d = new Date(startDate); d <= endDate; d = addDays(d, 1)) {
     const key = toKey(d);
-    const done = completed.has(key);
 
-    if (done) {
+    if (completed.has(key)) {
       current += 1;
-      if (current > best) best = current;
       continue;
     }
 
-    // Не выполнено
+    // Выходные — серия не сбрасывается (только если есть что хранить)
     if (isWeekend(d)) {
-      // Защита выходных — серия сохраняется, но не растёт
-      events.push({ date: key, type: 'weekend' });
+      if (current > 0) events.push({ date: key, type: 'weekend' });
       continue;
     }
+
+    // Сегодняшний день ещё не закончен — не списываем защиту и не сбрасываем серию.
+    // Пользователь может ещё отметить привычку сегодня.
+    if (key === today) continue;
 
     const wk = isoWeekKey(d);
-    if (!usedProtectionInWeek[wk]) {
-      // Бесплатная еженедельная защита
+
+    // Бесплатная защита — только когда есть активная серия
+    if (current > 0 && !usedProtectionInWeek[wk]) {
       usedProtectionInWeek[wk] = true;
       events.push({ date: key, type: 'weekly-protection' });
       continue;
     }
 
-    // Мягкая потеря — серия сбрасывается
+    // Мягкая потеря
     if (current > 0) {
       events.push({ date: key, type: 'streak-lost', wasLength: current });
     }
     current = 0;
   }
 
-  best = Math.max(best, habit.bestStreak || 0);
-
-  return {
-    currentStreak: current,
-    bestStreak: best,
-    events,
-    usedProtection: !!usedProtectionInWeek[isoWeekKey(endDate)],
-  };
+  return { currentStreak: current, events, usedProtectionInWeek };
 }
 
-// Обновляет все привычки + user.weeklyProtection для текущей недели.
-// Возвращает { habits, user, latestEvents } — latestEvents это события за СЕГОДНЯ
-// для показа баннеров.
-export function recomputeAll(state, today = todayKey()) {
-  const habits = [];
-  const todaysEvents = [];
-  let weekProtectionUsed = false;
-  const todayWeek = isoWeekKey(today);
+/**
+ * Быстрое вычисление только текущей серии (без событий).
+ * Используется для отображения в UI.
+ */
+export function computeCurrentStreak(completedDates, createdAt, today = todayKey()) {
+  return computeHabitStreak({ completedDates, createdAt }, today).currentStreak;
+}
 
-  for (const h of state.habits) {
-    const res = computeHabitStreak(h, today);
-    habits.push({ ...h, currentStreak: res.currentStreak, bestStreak: res.bestStreak });
-    for (const ev of res.events) {
-      if (ev.date === today) todaysEvents.push({ habitId: h.id, ...ev });
-      // Защита засчитывается на той неделе, к которой относится событие
-      if (ev.type === 'weekly-protection' && isoWeekKey(ev.date) === todayWeek) {
-        weekProtectionUsed = true;
+/**
+ * Вычисляет события сегодняшнего дня для всех привычек.
+ * Используется для баннеров на главном экране.
+ * @returns {{ todaysEvents: Array, weeklyProtectionUsed: boolean }}
+ */
+export function computeTodayState(habits, today = todayKey()) {
+  const todayWeek = isoWeekKey(today);
+  const todaysEvents = [];
+  let weeklyProtectionUsed = false;
+
+  for (const h of habits) {
+    const { events, usedProtectionInWeek } = computeHabitStreak(h, today);
+    for (const ev of events) {
+      if (ev.date === today) {
+        todaysEvents.push({ habitId: h.id, ...ev });
       }
+    }
+    if (usedProtectionInWeek?.[todayWeek]) {
+      weeklyProtectionUsed = true;
     }
   }
 
-  const user = {
-    ...state.user,
-    weeklyProtection: { weekKey: todayWeek, used: weekProtectionUsed },
-  };
-
-  // Пересчитать totalClosedDays
-  const totalClosedDays = Object.values(state.days).filter(d => d.closed).length;
-  user.totalClosedDays = totalClosedDays;
-
-  return { habits, user, todaysEvents };
+  return { todaysEvents, weeklyProtectionUsed };
 }
 
-// Поддерживающие сообщения для виджета баннера
+/** Поддерживающие сообщения для баннеров */
 export function eventMessage(event) {
   switch (event.type) {
     case 'weekly-protection':
       return {
         tone: 'warm',
-        text:
-          'Сегодня ты пропустил, но мы сохранили твою серию ❤️\n' +
-          'Использована бесплатная защита этой недели.',
+        text: 'Сегодня ты пропустил, но мы сохранили твою серию ❤️\nИспользована бесплатная защита этой недели.',
       };
     case 'weekend':
       return {
@@ -122,25 +120,22 @@ export function eventMessage(event) {
     case 'streak-lost':
       return {
         tone: 'rose',
-        text:
-          'Серия завершилась, но твой прогресс никуда не исчез.\n' +
-          'Ты уже доказал себе, что можешь это делать.\n' +
-          'Завтра начинается новая серия.',
+        text: 'Серия завершилась, но твой прогресс никуда не исчез.\nТы уже доказал себе, что можешь это делать.\nЗавтра начинается новая серия.',
       };
     default:
       return null;
   }
 }
 
-// Майлстоуны серии — мягкие, поддерживающие
+/** Майлстоуны серии */
 export function milestoneFor(streak) {
   switch (streak) {
-    case 3:  return 'Ты уже начал выстраивать ритм.';
-    case 7:  return 'Целая неделя. Это уже не случайность.';
-    case 14: return 'Ты строишь более сильную версию себя.';
-    case 30: return 'Это становится частью твоей личности.';
-    case 60: return 'Два месяца — это очень глубокая работа над собой.';
-    case 100:return 'Сто дней. Это уже твой характер.';
-    default: return null;
+    case 3:   return 'Ты уже начал выстраивать ритм.';
+    case 7:   return 'Целая неделя. Это уже не случайность.';
+    case 14:  return 'Ты строишь более сильную версию себя.';
+    case 30:  return 'Это становится частью твоей личности.';
+    case 60:  return 'Два месяца. Это очень глубокая работа.';
+    case 100: return 'Сто дней. Это уже твой характер.';
+    default:  return null;
   }
 }

@@ -72,25 +72,26 @@ a {
 
 .app__scroll {
   flex: 1;
-  padding: var(--sp-4) var(--sp-5) calc(var(--bottom-nav-h) + var(--safe-bottom) + var(--sp-6));
+  padding: var(--sp-4) var(--sp-5) calc(var(--bottom-nav-h) + var(--safe-bottom) + var(--sp-8));
   overflow-x: hidden;
 }
 
+/* ── Headings ───────────────────────────────────────────── */
 .h1 {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: var(--fs-2xl);
   line-height: var(--lh-tight);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   margin: 0;
 }
 
 .h2 {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
   font-size: var(--fs-xl);
-  line-height: var(--lh-tight);
-  letter-spacing: -0.015em;
+  line-height: var(--lh-snug);
+  letter-spacing: -0.025em;
   margin: 0;
 }
 
@@ -98,14 +99,17 @@ a {
   font-family: var(--font-display);
   font-weight: 600;
   font-size: var(--fs-lg);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-snug);
+  letter-spacing: -0.015em;
   margin: 0;
 }
 
-.text-muted { color: var(--text-muted); }
+/* ── Utility classes ────────────────────────────────────── */
+.text-muted  { color: var(--text-muted); }
 .text-subtle { color: var(--text-subtle); }
-.text-sm { font-size: var(--fs-sm); }
-.text-xs { font-size: var(--fs-xs); }
+.text-sm     { font-size: var(--fs-sm); }
+.text-xs     { font-size: var(--fs-xs); }
+.text-accent { color: var(--accent-strong); }
 
 .stack-1 > * + * { margin-top: var(--sp-1); }
 .stack-2 > * + * { margin-top: var(--sp-2); }
@@ -115,14 +119,14 @@ a {
 .stack-6 > * + * { margin-top: var(--sp-6); }
 .stack-7 > * + * { margin-top: var(--sp-7); }
 
-.row { display: flex; align-items: center; }
-.row-gap-2 { gap: var(--sp-2); }
-.row-gap-3 { gap: var(--sp-3); }
-.row-gap-4 { gap: var(--sp-4); }
+.row         { display: flex; align-items: center; }
+.row-gap-2   { gap: var(--sp-2); }
+.row-gap-3   { gap: var(--sp-3); }
+.row-gap-4   { gap: var(--sp-4); }
 .row-between { display: flex; align-items: center; justify-content: space-between; }
+.center      { display: flex; align-items: center; justify-content: center; }
 
-.center { display: flex; align-items: center; justify-content: center; }
-
+/* ── Animations ─────────────────────────────────────────── */
 .fade-in {
   animation: fadeIn var(--dur-base) var(--ease-out) both;
 }
@@ -131,14 +135,23 @@ a {
   animation: slideUp var(--dur-slow) var(--ease-out) both;
 }
 
+.scale-in {
+  animation: scaleIn var(--dur-base) var(--ease-bounce) both;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {

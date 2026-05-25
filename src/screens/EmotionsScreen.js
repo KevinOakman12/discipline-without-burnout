@@ -1,29 +1,46 @@
+// Экран выбора эмоций — множественный выбор по каждой категории.
+// onComplete({ emotions: [{ id, label, group }], note: string })
+
 import { html, useState } from '../h.js';
 import { ScreenHeader } from '../components/ui/ScreenHeader.js';
 import { Button } from '../components/ui/Button.js';
 import { EMOTION_GROUPS } from '../data/emotions.js';
 import { haptic } from '../utils/telegram.js';
 
-export function EmotionsScreen({ initialEmotion = null, initialNote = '', onComplete, onBack, ctaLabel = 'Готово' }) {
-  const [selectedId, setSelectedId] = useState(initialEmotion?.id || null);
+export function EmotionsScreen({
+  initialEmotions = [],   // [{ id, label, group }]
+  initialNote = '',
+  onComplete,
+  onBack,
+  ctaLabel = 'Готово',
+}) {
+  // selectedIds — Set строк с id выбранных эмоций
+  const [selectedIds, setSelectedIds] = useState(
+    () => new Set((initialEmotions || []).map(e => e.id))
+  );
   const [note, setNote] = useState(initialNote);
 
-  const selectedGroup = EMOTION_GROUPS.find(g => g.items.some(e => e.id === selectedId))?.key;
-  const selected = selectedId
-    ? EMOTION_GROUPS.flatMap(g => g.items).find(e => e.id === selectedId)
-    : null;
-
-  const pick = (e) => {
+  const toggle = (emotion, groupKey) => {
     haptic('select');
-    setSelectedId(e.id);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(emotion.id)) next.delete(emotion.id);
+      else next.add(emotion.id);
+      return next;
+    });
   };
 
+  const hasSelection = selectedIds.size > 0;
+
   const finish = () => {
-    if (!selected) return;
-    onComplete({
-      emotion: { id: selected.id, label: selected.label, group: selectedGroup },
-      note: note.trim(),
-    });
+    if (!hasSelection) return;
+    // Собираем полные объекты в том порядке, в котором они идут в каталоге
+    const emotions = EMOTION_GROUPS.flatMap(g =>
+      g.items
+        .filter(e => selectedIds.has(e.id))
+        .map(e => ({ id: e.id, label: e.label, group: g.key }))
+    );
+    onComplete({ emotions, note: note.trim() });
   };
 
   return html`
@@ -36,6 +53,10 @@ export function EmotionsScreen({ initialEmotion = null, initialNote = '', onComp
             Что ты сейчас чувствуешь?
           </div>
 
+          <div class="text-muted text-sm" style="padding:0 var(--sp-2)">
+            Можно выбрать несколько
+          </div>
+
           ${EMOTION_GROUPS.map(g => html`
             <div class="emotion-group" key=${g.key}>
               <div class="emotion-group__label">${g.label}</div>
@@ -43,8 +64,8 @@ export function EmotionsScreen({ initialEmotion = null, initialNote = '', onComp
                 ${g.items.map(e => html`
                   <button
                     key=${e.id}
-                    class=${`emotion-chip emotion-chip--${g.key} ${selectedId === e.id ? 'emotion-chip--active' : ''}`}
-                    onClick=${() => pick(e)}
+                    class=${`emotion-chip emotion-chip--${g.key} ${selectedIds.has(e.id) ? 'emotion-chip--active' : ''}`}
+                    onClick=${() => toggle(e, g.key)}
                   >
                     <span style="margin-right:6px">${e.emoji}</span>${e.label}
                   </button>
@@ -53,7 +74,7 @@ export function EmotionsScreen({ initialEmotion = null, initialNote = '', onComp
             </div>
           `)}
 
-          ${selected && html`
+          ${hasSelection && html`
             <div class="stack-3 slide-up">
               <label class="label">Почему ты так себя чувствуешь?</label>
               <textarea
@@ -69,7 +90,7 @@ export function EmotionsScreen({ initialEmotion = null, initialNote = '', onComp
             variant="primary"
             size="lg"
             full
-            disabled=${!selected}
+            disabled=${!hasSelection}
             onClick=${finish}
             hapticType="success"
           >${ctaLabel}</>

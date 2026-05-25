@@ -4,32 +4,29 @@
 // Контракт данных:
 //
 // Habit:
-//   { id, title, icon, createdAt, archived?, currentStreak, bestStreak, completedDates: [YYYY-MM-DD] }
+//   { id, title, icon, createdAt, bestStreak, completedDates: [YYYY-MM-DD] }
+//   NOTE: currentStreak НЕ хранится — всегда вычисляется из completedDates.
 //
 // DayEntry:
 //   { date: YYYY-MM-DD,
-//     completedHabits: [habitId],        // дублирует habit.completedDates для удобства
+//     completedHabits: [habitId],
 //     reflectionAnswers: [string, string, string],
-//     emotion: { id, label, group } | null,
+//     emotions: [{ id, label, group }],
 //     emotionNote: string,
 //     breathingCompleted: boolean,
-//     closed: boolean }                  // true если пользователь нажал «Закрыть день»
+//     closed: boolean }
 //
 // User:
-//   { weeklyProtection: { weekKey, used }, totalClosedDays: number }
-//
-// Streak state (отдельно от Habit, чтобы не мешать миграциям):
-//   { lastProtectedWeek, ... } — пока хранится внутри User
+//   { totalClosedDays: number }
 
 const KEY = 'discipline_v1';
 const LISTENERS = new Set();
 
 const defaultState = () => ({
-  version: 1,
-  habits: [],          // Habit[]
-  days: {},            // { [date]: DayEntry }
+  version: 2,
+  habits: [],   // Habit[]  — currentStreak не хранится, только bestStreak
+  days: {},     // { [date]: DayEntry }
   user: {
-    weeklyProtection: { weekKey: null, used: false },
     totalClosedDays: 0,
     onboardedAt: null,
   },
@@ -97,7 +94,18 @@ export function upsertHabit(habit) {
 }
 
 export function removeHabit(id) {
-  return setState(s => ({ ...s, habits: s.habits.filter(h => h.id !== id) }));
+  return setState(s => {
+    // Удаляем привычку и чистим её id из completedHabits во всех дневных записях.
+    const habits = s.habits.filter(h => h.id !== id);
+    const days = {};
+    for (const [date, day] of Object.entries(s.days)) {
+      days[date] = {
+        ...day,
+        completedHabits: (day.completedHabits || []).filter(hid => hid !== id),
+      };
+    }
+    return { ...s, habits, days };
+  });
 }
 
 export function getDay(date) {
@@ -110,7 +118,7 @@ export function upsertDay(date, patch) {
       date,
       completedHabits: [],
       reflectionAnswers: ['', '', ''],
-      emotion: null,
+      emotions: [],       // массив { id, label, group }
       emotionNote: '',
       breathingCompleted: false,
       closed: false,

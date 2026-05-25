@@ -30,9 +30,11 @@ export function HistoryScreen({ state, onOpenDay }) {
     const habits = state.habits;
     const completed = day?.completedHabits?.length || 0;
     const total = habits.length;
-    if (!day && completed === 0) return 'empty';
+    // Зелёная подсветка только при реальных выполненных привычках.
+    // Закрытый день без выполненных привычек обозначается только точкой (.calendar__cell--reflected),
+    // а не зелёным фоном — чтобы удалённые привычки не оставляли ложной окраски.
     if (total > 0 && completed >= total && day?.closed) return 'completed';
-    if (completed > 0 || day?.closed) return 'partial';
+    if (completed > 0) return 'partial';
     return 'empty';
   };
 
@@ -112,7 +114,10 @@ function RecentDaysList({ state, onOpenDay }) {
     <div class="stack-3">
       <div class="section-title">Последние закрытые дни</div>
       ${entries.map(d => {
-        const em = d.emotion ? findEmotion(d.emotion.id) : null;
+        // Обратная совместимость: emotion (одиночное) → emotions (массив)
+        const emotions = d.emotions?.length ? d.emotions : (d.emotion ? [d.emotion] : []);
+        const firstEm = emotions[0] ? findEmotion(emotions[0].id) : null;
+        const extraCount = emotions.length > 1 ? `+${emotions.length - 1}` : '';
         return html`
           <button
             key=${d.date}
@@ -120,11 +125,15 @@ function RecentDaysList({ state, onOpenDay }) {
             style="text-align:left;width:100%;display:flex;align-items:center;gap:var(--sp-3);background:var(--bg-elevated);border:1px solid var(--border)"
             onClick=${() => onOpenDay(d.date)}
           >
-            <div style="font-size:24px">${em?.emoji || '🌿'}</div>
+            <div style="font-size:24px">${firstEm?.emoji || '🌿'}</div>
             <div style="flex:1;min-width:0">
               <div style="font-weight:600">${formatDateLong(d.date)}</div>
               <div class="text-muted text-sm" style="margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                ${em ? em.label : 'без эмоции'}${d.reflectionAnswers?.[1] ? ` · ${d.reflectionAnswers[1].slice(0, 40)}` : ''}
+                ${emotions.length
+                  ? emotions.map(e => findEmotion(e.id)?.label || e.label).join(', ')
+                  : 'без эмоции'}
+                ${extraCount && html` <span>${extraCount}</span>`}
+                ${d.reflectionAnswers?.[1] ? ` · ${d.reflectionAnswers[1].slice(0, 30)}` : ''}
               </div>
             </div>
             <div class="text-subtle">›</div>

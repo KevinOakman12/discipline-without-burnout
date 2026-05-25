@@ -54,3 +54,8 @@ export function isNegativeEmotion(id) {
   const e = findEmotion(id);
   return e?.group === 'negative';
 }
+
+// Проверяет, есть ли хотя бы одна негативная эмоция в массиве.
+export function hasNegativeEmotion(emotions = []) {
+  return emotions.some(e => isNegativeEmotion(e.id));
+}

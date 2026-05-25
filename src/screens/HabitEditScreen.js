@@ -19,12 +19,34 @@ export function HabitEditScreen({ habit, onSave, onDelete, onBack }) {
   return html`
     <div class="fade-in">
       <${ScreenHeader}
-        title=${isEditing ? 'Привычка' : 'Новая привычка'}
+        title=${isEditing ? 'Редактировать привычку' : 'Новая привычка'}
         onBack=${onBack}
+        right=${isEditing && !confirmingDelete && html`
+          <button
+            style="padding:6px 12px;border-radius:var(--r-pill);background:var(--rose-faint);color:var(--rose);font-size:var(--fs-sm);font-weight:600"
+            onClick=${() => { haptic('light'); setConfirmingDelete(true); }}
+          >Удалить</button>
+        `}
       />
 
       <div class="app__scroll" style="padding-top:0">
         <div class="stack-6">
+
+          ${confirmingDelete && html`
+            <div class="card" style="background:var(--rose-faint);border-color:transparent">
+              <div style="font-weight:600;margin-bottom:var(--sp-2)">Удалить привычку?</div>
+              <div class="text-muted text-sm" style="margin-bottom:var(--sp-4)">
+                История выполнения и вся серия для этой привычки будут удалены.
+              </div>
+              <div class="btn-row">
+                <${Button} variant="ghost" onClick=${() => setConfirmingDelete(false)}>Оставить</>
+                <${Button} variant="soft" onClick=${() => onDelete(habit.id)} hapticType="warning">
+                  Удалить
+                </>
+              </div>
+            </div>
+          `}
+
           <div>
             <label class="label">Название</label>
             <input
@@ -39,7 +61,7 @@ export function HabitEditScreen({ habit, onSave, onDelete, onBack }) {
           </div>
 
           <div>
-            <label class="label">Иконка (необязательно)</label>
+            <label class="label">Иконка</label>
             <div class="icon-picker">
               ${HABIT_ICONS.map(em => html`
                 <button
@@ -61,27 +83,6 @@ export function HabitEditScreen({ habit, onSave, onDelete, onBack }) {
             hapticType="success"
           >Сохранить</>
 
-          ${isEditing && html`
-            <div style="text-align:center;padding-top:var(--sp-4)">
-              ${confirmingDelete
-                ? html`
-                  <div class="stack-3">
-                    <div class="text-muted text-sm">Удалить привычку и её историю?</div>
-                    <div class="btn-row">
-                      <${Button} variant="ghost" onClick=${() => setConfirmingDelete(false)}>Оставить</>
-                      <${Button} variant="soft" onClick=${() => onDelete(habit.id)} hapticType="warning">Удалить</>
-                    </div>
-                  </div>
-                `
-                : html`
-                  <button
-                    class="btn btn--ghost"
-                    style="color: var(--text-muted)"
-                    onClick=${() => { haptic('light'); setConfirmingDelete(true); }}
-                  >Удалить привычку</button>
-                `}
-            </div>
-          `}
         </div>
       </div>
     </div>

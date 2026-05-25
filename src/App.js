@@ -1,86 +1,82 @@
 import { html, useEffect, useMemo, useState } from './h.js';
 
 import { useStore } from './store/useStore.js';
-import { getState, setState, uid, upsertDay, upsertHabit, removeHabit } from './store/storage.js';
-import { recomputeAll, milestoneFor } from './utils/streak.js';
+import { getState, uid, upsertDay, upsertHabit, removeHabit } from './store/storage.js';
+import { computeHabitStreak, computeTodayState, milestoneFor } from './utils/streak.js';
 import { todayKey } from './utils/date.js';
-import { isNegativeEmotion } from './data/emotions.js';
+import { hasNegativeEmotion } from './data/emotions.js';
 import { haptic, showBackButton } from './utils/telegram.js';
 
-import { BottomNav } from './components/ui/BottomNav.js';
-import { HomeScreen } from './screens/HomeScreen.js';
-import { HabitEditScreen } from './screens/HabitEditScreen.js';
-import { CloseDayScreen } from './screens/CloseDayScreen.js';
-import { EmotionsScreen } from './screens/EmotionsScreen.js';
-import { BreathingScreen } from './screens/BreathingScreen.js';
-import { FinalScreen } from './screens/FinalScreen.js';
-import { HistoryScreen } from './screens/HistoryScreen.js';
-import { DayDetailScreen } from './screens/DayDetailScreen.js';
-import { ProfileScreen } from './screens/ProfileScreen.js';
+import { BottomNav }         from './components/ui/BottomNav.js';
+import { HomeScreen }        from './screens/HomeScreen.js';
+import { HabitEditScreen }   from './screens/HabitEditScreen.js';
+import { CloseDayScreen }    from './screens/CloseDayScreen.js';
+import { EmotionsScreen }    from './screens/EmotionsScreen.js';
+import { BreathingScreen }   from './screens/BreathingScreen.js';
+import { FinalScreen }       from './screens/FinalScreen.js';
+import { HistoryScreen }     from './screens/HistoryScreen.js';
+import { DayDetailScreen }   from './screens/DayDetailScreen.js';
+import { ProfileScreen }     from './screens/ProfileScreen.js';
 
-// Маршрутизация — простая, in-memory. Достаточно для Mini App.
 const ROUTES = {
-  HOME: 'home',
+  HOME:       'home',
   HABIT_EDIT: 'habit-edit',
-  CLOSE_DAY: 'close-day',
-  EMOTIONS: 'emotions',
-  HISTORY: 'history',
-  PROFILE: 'profile',
+  CLOSE_DAY:  'close-day',
+  EMOTIONS:   'emotions',
+  HISTORY:    'history',
+  PROFILE:    'profile',
   DAY_DETAIL: 'day-detail',
 };
 
 export function App() {
   const state = useStore();
-  const [route, setRoute] = useState(ROUTES.HOME);
-  const [routeParams, setRouteParams] = useState({});
+
+  const [route, setRoute]               = useState(ROUTES.HOME);
+  const [routeParams, setRouteParams]   = useState({});
   const [breathingOpen, setBreathingOpen] = useState(false);
-  const [finalOpen, setFinalOpen] = useState(false);
+  const [finalOpen, setFinalOpen]       = useState(false);
   const [suggestBreathing, setSuggestBreathing] = useState(false);
-  const [milestone, setMilestone] = useState(null); // { streak, text }
-  const [todaysEvents, setTodaysEvents] = useState([]);
+  const [milestone, setMilestone]       = useState(null);
 
-  // Перерасчёт серий при каждом изменении состояния.
-  useEffect(() => {
+  // ---------- Вычисляемые данные (useMemo — всегда актуальны) ----------
+
+  // Серии для каждой привычки: вычисляются свежо из completedDates.
+  // Никакого хранения currentStreak в storage нет.
+  const streaks = useMemo(() => {
     const today = todayKey();
-    const { habits, user, todaysEvents: events } = recomputeAll(getState(), today);
-
-    // Применяем только если что-то реально поменялось, чтобы не зацикливаться
-    const same = JSON.stringify(habits) === JSON.stringify(getState().habits)
-              && JSON.stringify(user) === JSON.stringify(getState().user);
-    if (!same) {
-      setState(s => ({ ...s, habits, user }));
+    const result = {};
+    for (const h of state.habits) {
+      const { currentStreak } = computeHabitStreak(h, today);
+      result[h.id] = { current: currentStreak, best: h.bestStreak || 0 };
     }
-    setTodaysEvents(events);
-    // eslint-disable-next-line
-  }, [state.habits.length, state.days, state.habits.map(h => h.completedDates?.length).join(',')]);
+    return result;
+  }, [state.habits]);
 
-  // Telegram BackButton
-  const isOnSubScreen = route !== ROUTES.HOME && route !== ROUTES.HISTORY && route !== ROUTES.PROFILE;
+  // События сегодняшнего дня (для баннеров) и флаг использования защиты недели.
+  const { todaysEvents, weeklyProtectionUsed } = useMemo(
+    () => computeTodayState(state.habits, todayKey()),
+    [state.habits]
+  );
+
+  // ---------- Telegram BackButton ----------
+  const isOnSubScreen = ![ROUTES.HOME, ROUTES.HISTORY, ROUTES.PROFILE].includes(route);
   useEffect(() => {
-    const cleanup = showBackButton(isOnSubScreen, () => goHome());
-    return cleanup;
+    return showBackButton(isOnSubScreen, goHome);
   }, [isOnSubScreen]);
 
-  const goTo = (r, params = {}) => { setRoute(r); setRouteParams(params); };
+  // ---------- Навигация ----------
+  const goTo   = (r, params = {}) => { setRoute(r); setRouteParams(params); };
   const goHome = () => goTo(ROUTES.HOME);
 
   // ---------- Привычки ----------
-  const handleAddHabit = () => goTo(ROUTES.HABIT_EDIT, { habitId: null });
-  const handleEditHabit = (habitId) => goTo(ROUTES.HABIT_EDIT, { habitId });
+  const handleAddHabit  = () => goTo(ROUTES.HABIT_EDIT, { habitId: null });
+  const handleEditHabit = (id) => goTo(ROUTES.HABIT_EDIT, { habitId: id });
 
   const handleSaveHabit = (habit) => {
     const isNew = !habit.id;
     const next = isNew
-      ? {
-          id: uid(),
-          title: habit.title,
-          icon: habit.icon,
-          createdAt: todayKey(),
-          currentStreak: 0,
-          bestStreak: 0,
-          completedDates: [],
-        }
-      : { ...state.habits.find(h => h.id === habit.id), ...habit };
+      ? { id: uid(), title: habit.title, icon: habit.icon, createdAt: todayKey(), bestStreak: 0, completedDates: [] }
+      : { ...getState().habits.find(h => h.id === habit.id), title: habit.title, icon: habit.icon };
     upsertHabit(next);
     haptic('success');
     goHome();
@@ -92,33 +88,39 @@ export function App() {
     goHome();
   };
 
-  // Toggle привычки для указанного дня (по умолчанию — сегодня).
+  // Toggle привычки для конкретного дня.
+  // Вычисляет новую серию «на лету» и сохраняет bestStreak если вырос.
   const handleToggleHabit = (habitId, dateOverride = null) => {
-    const today = dateOverride || todayKey();
-    const habit = state.habits.find(h => h.id === habitId);
+    const targetDate = dateOverride || todayKey();
+    const habit = getState().habits.find(h => h.id === habitId);
     if (!habit) return;
 
-    const wasCompleted = (habit.completedDates || []).includes(today);
-    const completedDates = wasCompleted
-      ? habit.completedDates.filter(d => d !== today)
-      : [...(habit.completedDates || []), today].sort();
+    const wasCompleted = (habit.completedDates || []).includes(targetDate);
+    const newCompletedDates = wasCompleted
+      ? habit.completedDates.filter(d => d !== targetDate)
+      : [...(habit.completedDates || []), targetDate].sort();
 
-    upsertHabit({ ...habit, completedDates });
+    // Вычислить новую серию для обновления bestStreak
+    const { currentStreak: newCurrent } = computeHabitStreak(
+      { ...habit, completedDates: newCompletedDates },
+      todayKey()
+    );
+    const newBest = Math.max(habit.bestStreak || 0, newCurrent);
 
-    // Обновляем DayEntry
+    upsertHabit({ ...habit, completedDates: newCompletedDates, bestStreak: newBest });
+
+    // Обновить DayEntry — completedHabits для этой даты
+    const currentDay = getState().days[targetDate];
     const dayCompleted = wasCompleted
-      ? (state.days[today]?.completedHabits || []).filter(id => id !== habitId)
-      : [...new Set([...(state.days[today]?.completedHabits || []), habitId])];
-    upsertDay(today, { completedHabits: dayCompleted });
+      ? (currentDay?.completedHabits || []).filter(id => id !== habitId)
+      : [...new Set([...(currentDay?.completedHabits || []), habitId])];
+    upsertDay(targetDate, { completedHabits: dayCompleted });
 
-    // Майлстоун — только при выполнении сегодня
-    if (!wasCompleted && today === todayKey()) {
-      const newStreak = (habit.currentStreak || 0) + 1;
-      const text = milestoneFor(newStreak);
-      if (text) {
-        setMilestone({ streak: newStreak, text });
-        haptic('success');
-      }
+    // Майлстоун — только при выполнении в сегодняшний день
+    if (!wasCompleted && targetDate === todayKey()) {
+      haptic(newCurrent > 1 ? 'success' : 'light');
+      const text = milestoneFor(newCurrent);
+      if (text) setMilestone({ streak: newCurrent, text });
     }
   };
 
@@ -126,53 +128,37 @@ export function App() {
   const handleStartCloseDay = () => goTo(ROUTES.CLOSE_DAY);
 
   const handleReflectionComplete = (answers) => {
-    const today = todayKey();
-    upsertDay(today, { reflectionAnswers: answers });
+    upsertDay(todayKey(), { reflectionAnswers: answers });
     goTo(ROUTES.EMOTIONS);
   };
 
-  const handleEmotionComplete = ({ emotion, note }) => {
-    const today = todayKey();
-    upsertDay(today, { emotion, emotionNote: note, closed: true });
+  const handleEmotionComplete = ({ emotions, note }) => {
+    upsertDay(todayKey(), { emotions, emotionNote: note, closed: true });
     haptic('success');
-
-    if (isNegativeEmotion(emotion.id)) {
-      setSuggestBreathing(true);
-      setFinalOpen(true);
-    } else {
-      setSuggestBreathing(false);
-      setFinalOpen(true);
-    }
+    setSuggestBreathing(hasNegativeEmotion(emotions));
+    setFinalOpen(true);
     setRoute(ROUTES.HOME);
   };
 
-  const handleFinalClose = () => {
-    setFinalOpen(false);
-    setSuggestBreathing(false);
-  };
+  const handleFinalClose    = () => { setFinalOpen(false); setSuggestBreathing(false); };
+  const handleStartBreathing = () => { setFinalOpen(false); setBreathingOpen(true); };
+  const handleBreathingDone  = () => upsertDay(todayKey(), { breathingCompleted: true });
 
-  const handleStartBreathing = () => {
-    setFinalOpen(false);
-    setBreathingOpen(true);
-  };
-
-  const handleBreathingDone = () => {
-    const today = todayKey();
-    upsertDay(today, { breathingCompleted: true });
-  };
-
-  // ---------- Навигация по вкладкам ----------
+  // ---------- Вкладки ----------
   const tab = route === ROUTES.HISTORY ? 'history'
             : route === ROUTES.PROFILE ? 'profile'
             : 'home';
+
   const handleTab = (key) => {
+    haptic('select');
     if (key === 'home')    goTo(ROUTES.HOME);
     if (key === 'history') goTo(ROUTES.HISTORY);
     if (key === 'profile') goTo(ROUTES.PROFILE);
   };
 
-  // ---------- Рендер ----------
+  // ---------- Рендер экранов ----------
   let screen = null;
+
   if (route === ROUTES.HABIT_EDIT) {
     const habit = routeParams.habitId
       ? state.habits.find(h => h.id === routeParams.habitId)
@@ -185,38 +171,41 @@ export function App() {
         onBack=${goHome}
       />
     `;
+
   } else if (route === ROUTES.CLOSE_DAY) {
-    const today = todayKey();
+    const d = state.days[todayKey()];
     screen = html`
       <${CloseDayScreen}
-        initial=${state.days[today]?.reflectionAnswers || ['','','']}
+        initial=${d?.reflectionAnswers || ['', '', '']}
         onComplete=${handleReflectionComplete}
         onBack=${goHome}
       />
     `;
+
   } else if (route === ROUTES.EMOTIONS) {
-    const today = todayKey();
-    const d = state.days[today];
+    const d = state.days[todayKey()];
+    const initEmotions = d?.emotions?.length ? d.emotions : (d?.emotion ? [d.emotion] : []);
     screen = html`
       <${EmotionsScreen}
-        initialEmotion=${d?.emotion || null}
+        initialEmotions=${initEmotions}
         initialNote=${d?.emotionNote || ''}
         onComplete=${handleEmotionComplete}
         onBack=${() => goTo(ROUTES.CLOSE_DAY)}
         ctaLabel="Завершить день"
       />
     `;
+
   } else if (route === ROUTES.DAY_DETAIL) {
-    const date = routeParams.date;
     screen = html`
       <${DayDetailScreen}
         state=${state}
-        date=${date}
+        date=${routeParams.date}
         onBack=${() => goTo(ROUTES.HISTORY)}
-        onToggleHabit=${(id) => handleToggleHabit(id, date)}
-        onUpdate=${(patch) => upsertDay(date, patch)}
+        onToggleHabit=${(id) => handleToggleHabit(id, routeParams.date)}
+        onUpdate=${(patch) => upsertDay(routeParams.date, patch)}
       />
     `;
+
   } else if (route === ROUTES.HISTORY) {
     screen = html`
       <div class="app__scroll">
@@ -226,17 +215,24 @@ export function App() {
         />
       </div>
     `;
+
   } else if (route === ROUTES.PROFILE) {
     screen = html`
       <div class="app__scroll">
-        <${ProfileScreen} state=${state} />
+        <${ProfileScreen}
+          state=${state}
+          streaks=${streaks}
+          weeklyProtectionUsed=${weeklyProtectionUsed}
+        />
       </div>
     `;
+
   } else {
     screen = html`
       <div class="app__scroll">
         <${HomeScreen}
           state=${state}
+          streaks=${streaks}
           todaysEvents=${todaysEvents}
           onToggleHabit=${handleToggleHabit}
           onAddHabit=${handleAddHabit}
@@ -249,8 +245,7 @@ export function App() {
     `;
   }
 
-  // Нижняя навигация — только на корневых вкладках
-  const showNav = route === ROUTES.HOME || route === ROUTES.HISTORY || route === ROUTES.PROFILE;
+  const showNav = [ROUTES.HOME, ROUTES.HISTORY, ROUTES.PROFILE].includes(route);
 
   return html`
     <div class="app">
