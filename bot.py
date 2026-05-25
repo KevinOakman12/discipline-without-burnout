@@ -1,8 +1,8 @@
 """
 Telegram-бот «Дисциплина без выгорания».
 
-Минимальный long-polling бот без сторонних зависимостей (только requests).
-Его единственная задача — открывать Mini App кнопкой WebApp.
+Минимальный long-polling бот. Единственная задача — открывать Mini App
+через синюю кнопку Menu Button рядом с полем ввода.
 
 Usage:
     1. Скопируй .env.example в .env и впиши свои значения:
@@ -10,10 +10,6 @@ Usage:
          WEBAPP_URL=https://<твой-домен>/index.html
     2. Установи requests:    pip install requests
     3. Запусти:              python bot.py
-
-Замечание про WEBAPP_URL:
-    Telegram требует, чтобы Mini App открывался по HTTPS.
-    Варианты хостинга описаны в README.md.
 """
 
 from __future__ import annotations
@@ -56,6 +52,7 @@ if not BOT_TOKEN:
 
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
+
 def welcome_text(first_name: str) -> str:
     greeting = f"✨ Привет, {first_name}." if first_name else "✨ Привет."
     return (
@@ -65,33 +62,16 @@ def welcome_text(first_name: str) -> str:
         "даже небольшой прогресс — уже движение вперёд 🌿"
     )
 
-HELP = (
-    "Команды:\n"
-    "/start — открыть приложение\n"
-    "/about — что это вообще такое\n"
-    "/help — эта подсказка"
-)
-
-ABOUT = (
-    "«Дисциплина без выгорания» — это маленький личный коуч.\n\n"
-    "Внутри:\n"
-    "• трекер привычек со «спасательной» серией;\n"
-    "• вечерняя рефлексия на 3 вопроса;\n"
-    "• работа с эмоциями;\n"
-    "• 30-секундная дыхательная практика.\n\n"
-    "Тут не за что соревноваться. Это пространство, где можно быть на своей стороне."
-)
-
 
 # ---------- thin HTTP wrapper ----------
 
 def _request(method: str, **params: Any) -> dict:
     url = f"{API}/{method}"
-    data = urllib.parse.urlencode(
-        {k: (json.dumps(v) if not isinstance(v, (str, int, float, bool)) else v)
-         for k, v in params.items() if v is not None}
-    ).encode("utf-8")
-    req = urllib.request.Request(url, data=data, method="POST")
+    data = json.dumps(params).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             return json.loads(resp.read().decode("utf-8"))
@@ -109,33 +89,22 @@ def get_updates(offset: int) -> list[dict]:
     return res.get("result", []) if res.get("ok") else []
 
 
-def send_message(chat_id: int, text: str, reply_markup: dict | None = None) -> None:
+def send_message(chat_id: int, text: str) -> None:
     _request(
         "sendMessage",
         chat_id=chat_id,
         text=text,
-        reply_markup=reply_markup,
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
 
 
-def set_my_commands() -> None:
-    _request(
-        "setMyCommands",
-        commands=[
-            {"command": "start", "description": "Открыть приложение"},
-            {"command": "about", "description": "О приложении"},
-            {"command": "help",  "description": "Помощь"},
-        ],
-    )
-
-
 def set_menu_button() -> None:
-    """Устанавливает синюю кнопку Menu Button рядом с полем ввода."""
+    """Синяя кнопка «Открыть» рядом с полем ввода — открывает Mini App."""
     if not WEBAPP_URL:
+        print("[bot] WEBAPP_URL не задан — Menu Button не установлена.", file=sys.stderr)
         return
-    _request(
+    res = _request(
         "setChatMenuButton",
         menu_button={
             "type": "web_app",
@@ -143,62 +112,34 @@ def set_menu_button() -> None:
             "web_app": {"url": WEBAPP_URL},
         },
     )
-
-
-def webapp_keyboard() -> dict | None:
-    if not WEBAPP_URL:
-        return None
-    return {
-        "inline_keyboard": [[
-            {"text": "🌿 Открыть приложение", "web_app": {"url": WEBAPP_URL}},
-        ]],
-    }
+    if res.get("ok"):
+        print("[bot] Menu Button установлена.")
+    else:
+        print(f"[bot] Ошибка setChatMenuButton: {res.get('description')}", file=sys.stderr)
 
 
 # ---------- handlers ----------
 
 def handle_message(msg: dict) -> None:
-    chat = msg.get("chat", {})
-    chat_id = chat.get("id")
+    chat_id = msg.get("chat", {}).get("id")
     text = (msg.get("text") or "").strip()
     first_name = (msg.get("from") or {}).get("first_name", "").strip()
 
     if text.startswith("/start"):
-        welcome = welcome_text(first_name)
-        if not WEBAPP_URL:
-            send_message(
-                chat_id,
-                welcome + "\n\n⚠️ WEBAPP_URL не настроен. См. README.md, раздел «Запуск».",
-            )
-        else:
-            send_message(chat_id, welcome)
-    elif text.startswith("/about"):
-        send_message(chat_id, ABOUT, reply_markup=webapp_keyboard())
-    elif text.startswith("/help"):
-        send_message(chat_id, HELP, reply_markup=webapp_keyboard())
+        send_message(chat_id, welcome_text(first_name))
     else:
-        send_message(
-            chat_id,
-            "Я простой бот — моя задача открыть приложение.\nНапиши /start.",
-            reply_markup=webapp_keyboard(),
-        )
+        send_message(chat_id, "Нажми кнопку «Открыть» рядом с полем ввода 🌿")
 
 
 # ---------- main loop ----------
 
 def main() -> None:
-    if not BOT_TOKEN:
-        print("BOT_TOKEN не задан", file=sys.stderr)
-        sys.exit(1)
-
     if not WEBAPP_URL:
         print(
-            "[bot] WEBAPP_URL не задан. Бот будет отвечать, но кнопка WebApp не появится.\n"
-            "      Укажи WEBAPP_URL в .env (HTTPS-адрес, где захостен index.html).",
+            "[bot] WEBAPP_URL не задан. Укажи его в .env.",
             file=sys.stderr,
         )
 
-    set_my_commands()
     set_menu_button()
     print(f"[bot] started. WEBAPP_URL={WEBAPP_URL or '(не задан)'}")
 
