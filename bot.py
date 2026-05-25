@@ -56,16 +56,14 @@ if not BOT_TOKEN:
 
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-WELCOME = (
-    "Привет 🌿\n"
-    "Это спокойное место для дисциплины без выгорания.\n\n"
-    "Здесь ты можешь:\n"
-    "• мягко удерживать ежедневные привычки;\n"
-    "• закрывать день короткой рефлексией;\n"
-    "• замечать свои эмоции;\n"
-    "• делать короткую дыхательную паузу, когда тяжело.\n\n"
-    "Нажми кнопку ниже, чтобы открыть приложение."
-)
+def welcome_text(first_name: str) -> str:
+    greeting = f"✨ Привет, {first_name}." if first_name else "✨ Привет."
+    return (
+        f"{greeting}\n\n"
+        "Это пространство, где дисциплина строится без давления и чувства вины.\n\n"
+        "Отмечай привычки, закрывай день, наблюдай за своим ритмом и помни:\n"
+        "даже небольшой прогресс — уже движение вперёд 🌿"
+    )
 
 HELP = (
     "Команды:\n"
@@ -161,16 +159,18 @@ def handle_message(msg: dict) -> None:
     chat = msg.get("chat", {})
     chat_id = chat.get("id")
     text = (msg.get("text") or "").strip()
+    first_name = (msg.get("from") or {}).get("first_name", "").strip()
 
     if text.startswith("/start"):
+        welcome = welcome_text(first_name)
         kb = reply_keyboard()
         if kb is None:
             send_message(
                 chat_id,
-                WELCOME + "\n\n⚠️ WEBAPP_URL не настроен. См. README.md, раздел «Запуск».",
+                welcome + "\n\n⚠️ WEBAPP_URL не настроен. См. README.md, раздел «Запуск».",
             )
         else:
-            send_message(chat_id, WELCOME, reply_markup=kb)
+            send_message(chat_id, welcome, reply_markup=kb)
             # Дополнительно — inline-кнопка, удобная для повторного открытия.
             inline = webapp_keyboard()
             if inline:
