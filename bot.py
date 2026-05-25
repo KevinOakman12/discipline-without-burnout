@@ -131,6 +131,20 @@ def set_my_commands() -> None:
     )
 
 
+def set_menu_button() -> None:
+    """Устанавливает синюю кнопку Menu Button рядом с полем ввода."""
+    if not WEBAPP_URL:
+        return
+    _request(
+        "setChatMenuButton",
+        menu_button={
+            "type": "web_app",
+            "text": "Открыть",
+            "web_app": {"url": WEBAPP_URL},
+        },
+    )
+
+
 def webapp_keyboard() -> dict | None:
     if not WEBAPP_URL:
         return None
@@ -138,18 +152,6 @@ def webapp_keyboard() -> dict | None:
         "inline_keyboard": [[
             {"text": "🌿 Открыть приложение", "web_app": {"url": WEBAPP_URL}},
         ]],
-    }
-
-
-def reply_keyboard() -> dict | None:
-    if not WEBAPP_URL:
-        return None
-    return {
-        "keyboard": [[
-            {"text": "🌿 Открыть приложение", "web_app": {"url": WEBAPP_URL}},
-        ]],
-        "resize_keyboard": True,
-        "is_persistent": True,
     }
 
 
@@ -163,18 +165,13 @@ def handle_message(msg: dict) -> None:
 
     if text.startswith("/start"):
         welcome = welcome_text(first_name)
-        kb = reply_keyboard()
-        if kb is None:
+        if not WEBAPP_URL:
             send_message(
                 chat_id,
                 welcome + "\n\n⚠️ WEBAPP_URL не настроен. См. README.md, раздел «Запуск».",
             )
         else:
-            send_message(chat_id, welcome, reply_markup=kb)
-            # Дополнительно — inline-кнопка, удобная для повторного открытия.
-            inline = webapp_keyboard()
-            if inline:
-                send_message(chat_id, "Открыть мини-приложение:", reply_markup=inline)
+            send_message(chat_id, welcome)
     elif text.startswith("/about"):
         send_message(chat_id, ABOUT, reply_markup=webapp_keyboard())
     elif text.startswith("/help"):
@@ -202,6 +199,7 @@ def main() -> None:
         )
 
     set_my_commands()
+    set_menu_button()
     print(f"[bot] started. WEBAPP_URL={WEBAPP_URL or '(не задан)'}")
 
     offset = 0
