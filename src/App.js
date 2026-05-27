@@ -85,6 +85,10 @@ export function App() {
       ? { id: uid(), title: habit.title, icon: habit.icon, createdAt: todayKey(), bestStreak: 0, completedDates: [] }
       : { ...getState().habits.find(h => h.id === habit.id), title: habit.title, icon: habit.icon };
     upsertHabit(next);
+    // Скрываем подсказку автоматически при добавлении первой привычки
+    if (isNew && !getState().user?.homeHintDismissed) {
+      patchUser({ homeHintDismissed: true });
+    }
     haptic('success');
     goHome();
   };
