@@ -602,3 +602,85 @@
   padding: var(--sp-3) var(--sp-5);
   flex: 1;
 }
+
+/* ── Onboarding ──────────────────────────────────────────── */
+.onboarding {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--sp-9) + var(--safe-top)) var(--sp-5) calc(var(--sp-7) + var(--safe-bottom));
+}
+.onboarding__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+.onboarding__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-2xl);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  color: var(--text);
+}
+.onboarding__text {
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+  line-height: var(--lh-relaxed);
+}
+.onboarding__features {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.onboarding__feature {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.onboarding__feature-icon {
+  font-size: 20px;
+  width: 38px;
+  height: 38px;
+  background: var(--accent-faint);
+  border-radius: var(--r-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.onboarding__footer {
+  padding-top: var(--sp-6);
+}
+
+/* ── Home Hint ───────────────────────────────────────────── */
+.home-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--warm-faint);
+  border: 1px solid color-mix(in srgb, var(--warm) 25%, var(--border));
+  border-radius: var(--r-xl);
+  font-size: var(--fs-sm);
+  color: var(--warm-text);
+  line-height: var(--lh-relaxed);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.home-hint:active { opacity: 0.65; }
+.home-hint__icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}

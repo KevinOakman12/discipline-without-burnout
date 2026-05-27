@@ -17,6 +17,8 @@ export function HomeScreen({
   onCloseDay,
   recentMilestone,
   onDismissMilestone,
+  showHint = false,
+  onDismissHint,
 }) {
   const today = todayKey();
   const habits = state.habits;
@@ -98,6 +100,13 @@ export function HomeScreen({
       >
         ${closed ? 'День закрыт — посмотреть' : 'Закрыть день'}
       </>
+
+      ${showHint && html`
+        <div class="home-hint" onClick=${onDismissHint} role="button">
+          <span class="home-hint__icon">💡</span>
+          <span>Добавь первую привычку и отмечай её каждый день. Вечером закрой день.</span>
+        </div>
+      `}
 
       ${recentMilestone && html`
         <${Milestone}

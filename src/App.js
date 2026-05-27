@@ -1,7 +1,7 @@
 import { html, useEffect, useMemo, useState } from './h.js';
 
 import { useStore } from './store/useStore.js';
-import { getState, uid, upsertDay, upsertHabit, removeHabit } from './store/storage.js';
+import { getState, uid, upsertDay, upsertHabit, removeHabit, patchUser } from './store/storage.js';
 import { computeHabitStreak, computeTodayState, milestoneFor } from './utils/streak.js';
 import { todayKey } from './utils/date.js';
 import { hasNegativeEmotion } from './data/emotions.js';
@@ -17,6 +17,7 @@ import { FinalScreen }       from './screens/FinalScreen.js';
 import { HistoryScreen }     from './screens/HistoryScreen.js';
 import { DayDetailScreen }   from './screens/DayDetailScreen.js';
 import { ProfileScreen }     from './screens/ProfileScreen.js';
+import { OnboardingScreen }  from './screens/OnboardingScreen.js';
 
 const ROUTES = {
   HOME:       'home',
@@ -37,6 +38,12 @@ export function App() {
   const [finalOpen, setFinalOpen]       = useState(false);
   const [suggestBreathing, setSuggestBreathing] = useState(false);
   const [milestone, setMilestone]       = useState(null);
+
+  // ---------- Онбординг ----------
+  const handleCompleteOnboarding = () => {
+    patchUser({ onboardedAt: new Date().toISOString() });
+  };
+  const handleDismissHint = () => patchUser({ homeHintDismissed: true });
 
   // ---------- Вычисляемые данные (useMemo — всегда актуальны) ----------
 
@@ -156,6 +163,20 @@ export function App() {
     if (key === 'profile') goTo(ROUTES.PROFILE);
   };
 
+  // ---------- Онбординг — показывается один раз при первом запуске ----------
+  // Существующие пользователи (есть привычки или дни) считаются onboarded автоматически.
+  const isOnboarded = !!state.user?.onboardedAt
+    || state.habits.length > 0
+    || Object.keys(state.days).length > 0;
+
+  if (!isOnboarded) {
+    return html`
+      <div class="app">
+        <${OnboardingScreen} onComplete=${handleCompleteOnboarding} />
+      </div>
+    `;
+  }
+
   // ---------- Рендер экранов ----------
   let screen = null;
 
@@ -240,6 +261,8 @@ export function App() {
           onCloseDay=${handleStartCloseDay}
           recentMilestone=${milestone}
           onDismissMilestone=${() => setMilestone(null)}
+          showHint=${!!state.user?.onboardedAt && !state.user?.homeHintDismissed}
+          onDismissHint=${handleDismissHint}
         />
       </div>
     `;

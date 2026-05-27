@@ -29,6 +29,7 @@ const defaultState = () => ({
   user: {
     totalClosedDays: 0,
     onboardedAt: null,
+    homeHintDismissed: false,
   },
 });
 
@@ -37,7 +38,9 @@ function read() {
     const raw = localStorage.getItem(KEY);
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
-    return Object.assign(defaultState(), parsed);
+    const def = defaultState();
+    // Глубокий мерж user — чтобы новые поля из defaultState дополняли существующие данные
+    return { ...def, ...parsed, user: { ...def.user, ...(parsed.user || {}) } };
   } catch (_) {
     return defaultState();
   }
